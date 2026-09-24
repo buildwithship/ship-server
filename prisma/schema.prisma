@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  OPERATING
+  IN_PROGRESS
+  ENDED
+}
+
+enum ProjectPlatform {
+  WEB
+  APP_STORE
+  GOOGLE_PLAY
+}
+
+enum ProjectMemberRole {
+  OWNER
+  CREW
+}
+
+enum RecruitmentType {
+  ONGOING
+  CLOSING_SOON
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum CrewStatus {
+  NONE
+  INVITED
+  JOINED
+  DECLINED
+}
+
+enum NotificationType {
+  APPLICATION_RECEIVED
+  APPLICATION_ACCEPTED
+  CREW_INVITE
+  PROJECT_INVITE
+  GENERAL
+}
+
+model User {
+  id              String          @id @default(uuid()) @db.Uuid
+  email           String          @unique
+  username        String          @unique
+  passwordHash    String
+  name            String
+  avatarUrl       String?
+  role            String          @default("")
+  bio             String          @default("")
+  skills          String[]        @default([])
+  githubUrl       String?
+  websiteUrl      String?
+  openToProject   Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  ownedProjects   Project[]       @relation("ProjectOwner")
+  memberships     ProjectMember[]
+  applications    Application[]
+  pushes          Push[]
+  watchedMakers   Watch[]         @relation("WatchWatcher")
+  watchers        Watch[]         @relation("WatchMaker")
+  notifications   Notification[]
+  refreshTokens   RefreshToken[]
+
+  @@map("users")
+}
+
+model Project {
+  id            Int                @id @default(autoincrement())
+  slug          String             @unique
+  name          String
+  tagline       String
+  description   String             @db.Text
+  logoUrl       String
+  bannerUrl     String
+  categories    String[]           @default([])
+  status        ProjectStatus      @default(IN_PROGRESS)
+  recruiting    Boolean            @default(false)
+  featured      Boolean            @default(false)
+  viewCount     Int                @default(0)
+  ownerId       String             @db.Uuid
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  deletedAt     DateTime?
+  owner         User               @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members       ProjectMember[]
+  links         ProjectLink[]
+  gallery       ProjectGallery[]
+  recruitments  Recruitment[]
+  pushes        Push[]
+
+  @@index([ownerId])
+  @@index([deletedAt, createdAt])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id         Int               @id @default(autoincrement())
+  projectId  Int
+  userId     String            @db.Uuid
+  role       ProjectMemberRole
+  title      String?
+  joinedAt   DateTime          @default(now())
+  project    Project           @relation(fields: [projectId], references: [id])
+  user       User              @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model ProjectLink {
+  id         Int             @id @default(autoincrement())
+  projectId  Int
+  platform   ProjectPlatform
+  url        String
+  project    Project         @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, platform])
+  @@map("project_links")
+}
+
+model ProjectGallery {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  imageUrl   String
+  sortOrder  Int      @default(0)
+  project    Project  @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, sortOrder])
+  @@map("project_gallery")
+}
+
+model Recruitment {
+  id                Int                   @id @default(autoincrement())
+  projectId         Int
+  type              RecruitmentType       @default(ONGOING)
+  shortDescription  String                @db.Text
+  isOpen            Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  deletedAt         DateTime?
+  project           Project               @relation(fields: [projectId], references: [id])
+  positions         RecruitmentPosition[]
+  applications      Application[]
+
+  @@index([projectId, isOpen])
+  @@map("recruitments")
+}
+
+model RecruitmentPosition {
+  id             Int           @id @default(autoincrement())
+  recruitmentId  Int
+  role           String
+  count          Int
+  recruitment    Recruitment   @relation(fields: [recruitmentId], references: [id])
+  applications   Application[]
+
+  @@unique([recruitmentId, role])
+  @@map("recruitment_positions")
+}
+
+model Application {
+  id             Int                @id @default(autoincrement())
+  recruitmentId  Int
+  positionId     Int
+  applicantId    String             @db.Uuid
+  message        String             @db.Text
+  portfolioUrl   String?
+  status         ApplicationStatus  @default(PENDING)
+  crewStatus     CrewStatus         @default(NONE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  recruitment    Recruitment        @relation(fields: [recruitmentId], references: [id])
+  position       RecruitmentPosition @relation(fields: [positionId], references: [id])
+  applicant      User               @relation(fields: [applicantId], references: [id])
+
+  @@unique([applicantId, recruitmentId])
+  @@index([recruitmentId, status])
+  @@map("applications")
+}
+
+model Push {
+  id         Int      @id @default(autoincrement())
+  userId     String   @db.Uuid
+  projectId  Int
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  project    Project  @relation(fields: [projectId], references: [id])
+
+  @@unique([userId, projectId])
+  @@index([projectId, createdAt])
+  @@map("pushes")
+}
+
+model Watch {
+  id         Int      @id @default(autoincrement())
+  watcherId  String   @db.Uuid
+  makerId    String   @db.Uuid
+  createdAt  DateTime @default(now())
+  watcher    User     @relation("WatchWatcher", fields: [watcherId], references: [id])
+  maker      User     @relation("WatchMaker", fields: [makerId], references: [id])
+
+  @@unique([watcherId, makerId])
+  @@index([makerId])
+  @@map("watches")
+}
+
+model Notification {
+  id         Int               @id @default(autoincrement())
+  userId     String            @db.Uuid
+  type       NotificationType
+  title      String
+  message    String            @db.Text
+  href       String?
+  imageUrl   String?
+  readAt     DateTime?
+  createdAt  DateTime          @default(now())
+  user       User              @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}
